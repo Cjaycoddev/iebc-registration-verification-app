@@ -157,6 +157,7 @@ export default function AdminDashboard() {
             <p className="muted">Live overview of registration &amp; verification</p>
           </div>
           <div className="admin-actions">
+            <button className="btn-ghost" onClick={() => navigate('/admin/voters')}>All Voters</button>
             <button className="btn-ghost" onClick={() => navigate('/admin/verify')}>Verify Voter</button>
             <button className="btn-ghost" onClick={() => navigate('/admin/voter-registration')}>Register Voter</button>
             <button className="btn-primary" onClick={() => navigate('/admin/register-officer')}>+ Register Officer</button>

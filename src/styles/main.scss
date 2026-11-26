@@ -1051,3 +1051,625 @@ select {
 // Kill any lingering chart animation that could freeze at opacity 0
 .admin .chart-card .recharts-surface { animation: none !important; transition: none !important; }
 .admin .chart-card * { animation-fill-mode: both; }
+// ===== IEBC: Voters Browser =====
+.voters-filters {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  gap: 10px;
+  margin: 20px 0;
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .voters-filters { grid-template-columns: 1fr 1fr; }
+}
+.voters-filters .search-input { min-width: 0; }
+.voters-filters select {
+  padding: 10px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: .92rem;
+  font-family: inherit;
+  color: #0f172a;
+  background: #fff;
+}
+.voters-filters select:focus {
+  outline: none;
+  border-color: #0f766e;
+  box-shadow: 0 0 0 4px rgba(15,118,110,.12);
+}
+
+.voter-name-cell { display: flex; align-items: center; gap: 10px; }
+.voter-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  object-fit: cover; border: 1px solid #e2e8f0; flex-shrink: 0;
+}
+.voter-avatar-empty { background: #f1f5f9; }
+
+.btn-link {
+  background: none; border: none;
+  color: #0f766e; font-weight: 600; font-size: .88rem;
+  cursor: pointer; padding: 4px 8px; border-radius: 6px;
+  font-family: inherit;
+}
+.btn-link:hover { background: rgba(15,118,110,.08); }
+
+.voters-pager {
+  display: flex; justify-content: center; align-items: center;
+  gap: 16px; margin-top: 20px;
+}
+
+.voter-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(15,23,42,.6);
+  backdrop-filter: blur(4px);
+  display: grid; place-items: center; padding: 20px;
+  animation: iebc-fade .2s ease;
+}
+.voter-modal {
+  background: #fff; border-radius: 16px;
+  box-shadow: 0 20px 40px -12px rgba(15,23,42,.25);
+  max-width: 720px; width: 100%; max-height: 90vh;
+  display: flex; flex-direction: column; overflow: hidden;
+  animation: iebc-pop .35s cubic-bezier(.2,.9,.3,1.3);
+}
+.voter-modal header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px; border-bottom: 1px solid #e2e8f0;
+}
+.voter-modal header h3 { margin: 0; font-size: 1.05rem; color: #0f172a; }
+.voter-modal header button {
+  background: none; border: 0; font-size: 1.5rem;
+  color: #64748b; cursor: pointer; padding: 4px 10px; border-radius: 8px;
+}
+.voter-modal header button:hover { background: #f1f5f9; color: #0f172a; }
+.voter-modal-body { padding: 20px; overflow-y: auto; }
+.voter-modal-photo {
+  width: 180px; height: 180px; object-fit: cover;
+  border-radius: 12px; border: 2px solid #e2e8f0;
+  box-shadow: 0 4px 12px rgba(15,23,42,.06);
+  margin: 0 auto 20px; display: block;
+}
+.voter-modal-body h4 {
+  margin: 24px 0 12px; font-size: .95rem; color: #0f172a;
+}
+.verification-history {
+  list-style: none; padding: 0; margin: 0;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.verification-history li {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px;
+  background: #f8fafc; border: 1px solid #e2e8f0;
+  border-radius: 10px; font-size: .88rem;
+}
+// ================================================================
+// IEBC: Premium Polish
+// ================================================================
+
+// --- Body background ---
+html, body {
+  background: linear-gradient(180deg, #f4f7f7 0%, #eaf2f1 100%) !important;
+  min-height: 100vh;
+}
+
+// --- Top page accent strip (thicker, richer) ---
+.admin::before {
+  height: 5px !important;
+  background: linear-gradient(90deg, #c8102e 0%, #0f766e 35%, #059669 65%, #c8102e 100%) !important;
+}
+
+// --- Admin header: subtle teal tint ---
+.admin-header {
+  background: linear-gradient(135deg, #ffffff 0%, #f0fdfa 100%) !important;
+  border-bottom: 1px solid #ccfbf1 !important;
+  box-shadow: 0 1px 8px rgba(15,118,110,.06) !important;
+}
+.admin-header .admin-user {
+  background: rgba(15,118,110,.08) !important;
+  color: #0f766e !important;
+  font-weight: 600;
+}
+
+// --- Title row accent bar ---
+.admin-title-row h1 {
+  position: relative;
+  padding-left: 14px;
+}
+.admin-title-row h1::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 65%;
+  background: linear-gradient(180deg, #0f766e 0%, #059669 100%);
+  border-radius: 4px;
+}
+
+// --- KPI cards: per-tone gradients + colored values ---
+.admin .kpi-card {
+  background: #fff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04), 0 4px 12px -4px rgba(15,23,42,.04) !important;
+  transition: transform .2s ease, box-shadow .2s ease !important;
+  position: relative;
+  overflow: hidden;
+}
+.admin .kpi-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px -8px rgba(15,23,42,.14), 0 0 0 1px rgba(15,118,110,.1) !important;
+}
+.admin .kpi-tone-teal {
+  background: linear-gradient(140deg, #f0fdfa 0%, #ffffff 65%) !important;
+}
+.admin .kpi-tone-teal .kpi-value { color: #0f766e !important; }
+.admin .kpi-tone-teal::before {
+  background: linear-gradient(90deg, #0f766e, #14b8a6) !important;
+  height: 4px !important;
+}
+.admin .kpi-tone-green {
+  background: linear-gradient(140deg, #ecfdf5 0%, #ffffff 65%) !important;
+}
+.admin .kpi-tone-green .kpi-value { color: #059669 !important; }
+.admin .kpi-tone-green::before {
+  background: linear-gradient(90deg, #059669, #10b981) !important;
+  height: 4px !important;
+}
+.admin .kpi-tone-blue {
+  background: linear-gradient(140deg, #eff6ff 0%, #ffffff 65%) !important;
+}
+.admin .kpi-tone-blue .kpi-value { color: #2563eb !important; }
+.admin .kpi-tone-blue::before {
+  background: linear-gradient(90deg, #2563eb, #3b82f6) !important;
+  height: 4px !important;
+}
+.admin .kpi-tone-slate {
+  background: linear-gradient(140deg, #f8fafc 0%, #ffffff 65%) !important;
+}
+.admin .kpi-tone-slate .kpi-value { color: #334155 !important; }
+.admin .kpi-tone-slate::before {
+  background: linear-gradient(90deg, #475569, #64748b) !important;
+  height: 4px !important;
+}
+.admin .kpi-value-status { color: #059669 !important; }
+
+// --- Chart cards: richer card + colored title dot ---
+.admin .chart-card {
+  background: #fff !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04), 0 4px 12px -4px rgba(15,23,42,.04) !important;
+  transition: transform .2s ease, box-shadow .2s ease !important;
+  position: relative;
+  overflow: hidden;
+}
+.admin .chart-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -8px rgba(15,23,42,.14) !important;
+}
+.admin .chart-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0f766e 0%, #059669 100%);
+}
+.admin .chart-card h3 {
+  display: flex; align-items: center; gap: 8px;
+}
+.admin .chart-card h3::before {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0f766e, #059669);
+  flex-shrink: 0;
+}
+
+// --- Chart tabs: gradient active ---
+.admin .chart-tabs {
+  background: #f1f5f9 !important;
+  padding: 4px !important;
+  border-radius: 10px !important;
+}
+.admin .chart-tab.active {
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%) !important;
+  color: #fff !important;
+  box-shadow: 0 2px 6px rgba(15,118,110,.28) !important;
+}
+
+// --- Buttons: gradient premium ---
+.btn-primary {
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 6px rgba(15,118,110,.18) !important;
+  transition: all .18s ease !important;
+  letter-spacing: .01em;
+}
+.btn-primary:hover:not(:disabled) {
+  background: linear-gradient(135deg, #115e59 0%, #047857 100%) !important;
+  box-shadow: 0 6px 16px rgba(15,118,110,.32) !important;
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+.btn-ghost {
+  background: #fff !important;
+  border: 1.5px solid #e2e8f0 !important;
+  transition: all .15s ease !important;
+}
+.btn-ghost:hover {
+  background: #f0fdfa !important;
+  border-color: #14b8a6 !important;
+  color: #0f766e !important;
+}
+
+// --- Search input ---
+.search-input {
+  background: #fff !important;
+  border: 1.5px solid #e2e8f0 !important;
+}
+.search-input:focus {
+  border-color: #0f766e !important;
+  box-shadow: 0 0 0 4px rgba(15,118,110,.12) !important;
+}
+
+// --- Table header tinted ---
+.officers-table thead {
+  background: linear-gradient(135deg, #f8fafc 0%, #f0fdfa 100%) !important;
+}
+.officers-table thead th {
+  color: #334155 !important;
+  font-weight: 700 !important;
+  text-transform: uppercase;
+  font-size: .72rem !important;
+  letter-spacing: .05em;
+  border-bottom: 2px solid #ccfbf1 !important;
+}
+.officers-table tbody tr:hover {
+  background: linear-gradient(90deg, rgba(15,118,110,.035) 0%, rgba(5,150,105,.035) 100%) !important;
+}
+
+// --- Officers section ---
+.officers-section {
+  border-radius: 16px !important;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04) !important;
+}
+.officers-section::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #0f766e 0%, #059669 100%);
+}
+
+// --- Register form card: gradient top accent ---
+.register-page .form-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 4px 20px rgba(15,23,42,.06), 0 1px 3px rgba(15,23,42,.04) !important;
+}
+.register-page .form-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #c8102e 0%, #0f766e 50%, #059669 100%);
+}
+
+// --- Stepper richer ---
+.register-page .stepper {
+  box-shadow: 0 4px 16px rgba(15,23,42,.04) !important;
+  border-radius: 16px !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%) !important;
+  border: 1px solid #e2e8f0 !important;
+}
+.register-page .stepper .step-num {
+  background: #fff !important;
+  border: 2px solid #cbd5e1 !important;
+}
+.register-page .stepper .step.active .step-num {
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+  box-shadow: 0 0 0 4px rgba(15,118,110,.15), 0 2px 6px rgba(15,118,110,.3) !important;
+}
+.register-page .stepper .step.done .step-num {
+  background: linear-gradient(135deg, #059669 0%, #10b981 100%) !important;
+  border-color: transparent !important;
+  color: #fff !important;
+}
+
+// --- Radio pills premium active ---
+.register-page .radio-pill input:checked + span {
+  background: linear-gradient(135deg, rgba(15,118,110,.08) 0%, rgba(5,150,105,.06) 100%) !important;
+  box-shadow: 0 0 0 3px rgba(15,118,110,.08);
+}
+
+// --- Verify page accent ---
+.verify-page-card {
+  position: relative;
+  overflow: hidden;
+}
+.verify-page-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #0f766e 0%, #059669 50%, #c8102e 100%);
+}
+
+// --- Voter modal richer ---
+.voter-modal {
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 32px 64px -16px rgba(15,23,42,.28) !important;
+}
+.voter-modal header {
+  background: linear-gradient(135deg, #f0fdfa 0%, #ffffff 100%) !important;
+  border-bottom: 1px solid #ccfbf1 !important;
+}
+
+// --- Login page: rich hero gradient ---
+.login-brand {
+  background: linear-gradient(135deg, #0f3a34 0%, #0f766e 50%, #059669 100%) !important;
+  position: relative;
+  overflow: hidden;
+}
+.login-brand::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.08) 0%, transparent 50%);
+  animation: iebc-shimmer 12s linear infinite;
+  pointer-events: none;
+}
+@keyframes iebc-shimmer {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.login-brand h1, .login-brand p {
+  color: #ffffff !important;
+}
+.login-form-wrap {
+  background: linear-gradient(180deg, #f8fafc 0%, #eaf2f1 100%) !important;
+}
+.login-form {
+  background: #ffffff !important;
+  border-radius: 16px !important;
+  box-shadow: 0 20px 40px -12px rgba(15,23,42,.15), 0 0 0 1px rgba(15,118,110,.04) !important;
+  padding: 40px !important;
+}
+
+// --- Verify result pop ---
+.verify-card {
+  box-shadow: 0 32px 64px -16px rgba(15,23,42,.35) !important;
+  border: 1px solid #e2e8f0;
+}
+.verify-card.is-success {
+  background: linear-gradient(135deg, #f0fdf4 0%, #ffffff 60%) !important;
+}
+.verify-card.is-fail {
+  background: linear-gradient(135deg, #fef2f2 0%, #ffffff 60%) !important;
+}
+
+// --- Officer action tiles ---
+.action-tile {
+  background: linear-gradient(140deg, #ffffff 0%, #f0fdfa 100%) !important;
+  border: 1px solid #e2e8f0 !important;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04), 0 4px 12px -4px rgba(15,23,42,.04) !important;
+}
+.action-tile.tile-green {
+  background: linear-gradient(140deg, #ffffff 0%, #ecfdf5 100%) !important;
+}
+
+// --- Voters filters ---
+.voters-filters select {
+  background: #fff !important;
+  border: 1.5px solid #e2e8f0 !important;
+  transition: all .15s ease !important;
+}
+.voters-filters select:hover {
+  border-color: #cbd5e1 !important;
+}
+.voters-filters select:focus {
+  border-color: #0f766e !important;
+  box-shadow: 0 0 0 4px rgba(15,118,110,.12) !important;
+}
+
+// --- Voters pager ---
+.voters-pager .btn-ghost {
+  border-radius: 10px !important;
+}
+
+// --- Status pills ---
+.status-pill.status-active {
+  background: linear-gradient(135deg, #d1fae5 0%, #ecfdf5 100%) !important;
+  color: #047857 !important;
+  border: 1px solid rgba(4,120,87,.15);
+}
+.status-pill.status-pending {
+  background: linear-gradient(135deg, #fef3c7 0%, #fffbeb 100%) !important;
+  color: #b45309 !important;
+  border: 1px solid rgba(180,83,9,.15);
+}
+.status-pill.status-inactive {
+  background: linear-gradient(135deg, #fee2e2 0%, #fef2f2 100%) !important;
+  color: #b91c1c !important;
+  border: 1px solid rgba(185,28,28,.15);
+}
+// ===== IEBC: Face Match Automation =====
+.face-processing,
+.verify-processing,
+.models-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f0fdfa 0%, #ecfdf5 100%);
+  border: 1px solid #ccfbf1;
+  border-radius: 10px;
+  color: #0f766e;
+  font-size: .9rem;
+  font-weight: 500;
+  margin-top: 12px;
+}
+.models-loading { margin: 12px 0; }
+
+.face-spinner {
+  width: 24px; height: 24px;
+  border: 3px solid #ccfbf1;
+  border-top-color: #0f766e;
+  border-radius: 50%;
+  animation: face-spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+.face-spinner.small { width: 18px; height: 18px; border-width: 2px; }
+@keyframes face-spin { to { transform: rotate(360deg); } }
+
+.face-preview-actions { display: flex; gap: 8px; }
+.face-ok-hint {
+  display: inline-block;
+  padding: 4px 10px;
+  background: #ecfdf5;
+  color: #059669;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.verify-result-badge {
+  margin-top: 20px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: .95rem;
+}
+.verify-result-badge.is-success {
+  background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+.verify-result-badge.is-fail {
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+.verify-result-badge strong {
+  font-size: 1rem;
+  letter-spacing: .04em;
+}
+.verify-result-badge span {
+  font-size: .85rem;
+  font-weight: 500;
+  opacity: .85;
+}
+
+.verify-card .verify-confidence {
+  margin: 4px 0 6px;
+  font-size: .85rem;
+  color: #475569;
+  font-weight: 500;
+}
+// ===== IEBC: Live Face Capture =====
+.face-capture-live .face-capture__stage {
+  aspect-ratio: 4 / 3;
+  position: relative;
+  background: #000;
+  overflow: hidden;
+}
+.face-capture-live .face-capture__stage video {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.face-capture-live .face-capture__stage img {
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+
+.face-oval {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 55%;
+  aspect-ratio: 3 / 4;
+  border-radius: 50%;
+  border: 3px dashed rgba(255,255,255,.55);
+  box-shadow: 0 0 0 2000px rgba(0,0,0,.35);
+  transition: border-color .25s ease, box-shadow .25s ease, transform .25s ease;
+  pointer-events: none;
+}
+.face-oval.is-detected {
+  border-color: #10b981;
+  border-style: solid;
+  box-shadow: 0 0 0 2000px rgba(0,0,0,.35), 0 0 0 3px rgba(16,185,129,.35), 0 0 24px rgba(16,185,129,.55);
+  transform: translate(-50%, -50%) scale(1.02);
+}
+
+.face-detected-badge {
+  position: absolute;
+  top: 14px; left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(16,185,129,.95);
+  color: #fff;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  animation: face-badge-in .25s ease;
+  box-shadow: 0 4px 12px rgba(16,185,129,.35);
+}
+.face-detected-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: face-pulse 1.1s ease-in-out infinite;
+}
+@keyframes face-badge-in {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes face-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: .4; }
+}
+
+.face-status {
+  position: absolute;
+  bottom: 24px; left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: rgba(15,23,42,.75);
+  color: #fff;
+  border-radius: 999px;
+  font-size: .85rem;
+  font-weight: 500;
+  backdrop-filter: blur(6px);
+  white-space: nowrap;
+}
+
+.face-progress {
+  position: absolute;
+  bottom: 68px; left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 6px;
+  background: rgba(255,255,255,.18);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.face-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981 0%, #34d399 100%);
+  border-radius: 999px;
+  transition: width .35s ease;
+  box-shadow: 0 0 12px rgba(16,185,129,.6);
+}

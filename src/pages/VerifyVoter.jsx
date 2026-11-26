@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { loadFaceModels, computeFaceDescriptor, compareDescriptors, normalizeDescriptor, areModelsReady } from '../lib/faceMatch'
 import Logo from '../components/Logo'
 import FaceCapture from '../components/FaceCapture'
 import VerifyResult from '../components/VerifyResult'
@@ -15,8 +16,22 @@ export default function VerifyVoter() {
   const [error, setError] = useState('')
   const [faceOpen, setFaceOpen] = useState(false)
   const [livePhoto, setLivePhoto] = useState('')
+  const [matching, setMatching] = useState(false)
   const [result, setResult] = useState(null)
-  const [logging, setLogging] = useState(false)
+
+  const [modelsLoading, setModelsLoading] = useState(!areModelsReady())
+  const [modelProgress, setModelProgress] = useState('')
+
+  useEffect(() => {
+    if (areModelsReady()) return
+    loadFaceModels(msg => setModelProgress(msg))
+      .then(() => setModelsLoading(false))
+      .catch(err => {
+        setModelProgress('')
+        setError('Face models failed to load: ' + (err?.message || 'unknown'))
+        setModelsLoading(false)
+      })
+  }, [])
 
   const idError = (() => {
     const t = idNumber.trim()
@@ -29,7 +44,7 @@ export default function VerifyVoter() {
     e?.preventDefault()
     const t = idNumber.trim()
     if (!t || idError) return
-    setSearching(true); setError(''); setVoter(null); setLivePhoto('')
+    setSearching(true); setError(''); setVoter(null); setLivePhoto(''); setResult(null)
     const { data, error: err } = await supabase
       .from('voters').select('*').eq('id_number', t).maybeSingle()
     setSearching(false)
@@ -38,31 +53,71 @@ export default function VerifyVoter() {
     setVoter(data)
   }
 
-  async function logVerification(success) {
+  async function logVerification({ isMatch, confidence, distance, auto }) {
     if (!voter) return
-    setLogging(true)
     const { data: { user } } = await supabase.auth.getUser()
     await supabase.from('verification_logs').insert({
       voter_id: voter.id,
       officer_id: user?.id ?? null,
       id_number_searched: idNumber.trim(),
-      method: 'face_visual',
-      success,
+      method: auto ? 'face_auto' : 'face_visual',
+      success: isMatch,
+      confidence: Number.isFinite(confidence) ? confidence : null,
+      distance: Number.isFinite(distance) ? distance : null,
     })
-    if (success) {
-      await supabase.from('voters').update({ verified_at: new Date().toISOString() }).eq('id', voter.id)
+    if (isMatch) {
+      const now = new Date().toISOString()
+      await supabase.from('voters').update({ verified_at: now }).eq('id', voter.id)
+      setVoter(v => ({ ...v, verified_at: now }))
     }
-    setLogging(false)
     setResult({
-      success,
+      success: isMatch,
       voterName: voter.first_name + ' ' + voter.last_name,
-      message: success ? 'Face matched the record on file' : 'Face did not match the record',
+      message: auto
+        ? (isMatch ? 'Face matched automatically' : 'Face did not match')
+        : (isMatch ? 'Manually marked as verified' : 'Manually marked as failed'),
+      confidence: Number.isFinite(confidence) ? confidence : null,
     })
   }
 
-  function reset() {
-    setIdNumber(''); setVoter(null); setLivePhoto(''); setError(''); setResult(null)
+  async function handleFaceMatch({ success, confidence, distance, dataUrl }) {
+    if (dataUrl) setLivePhoto(dataUrl)
+    await logVerification({ isMatch: success, confidence, distance, auto: true })
   }
+
+  async function handleLiveCaptured(dataUrl) {
+    setLivePhoto(dataUrl)
+    setError('')
+
+    const stored = normalizeDescriptor(voter?.face_descriptor)
+    if (!stored) return
+
+    setMatching(true)
+    try {
+      const liveDesc = await computeFaceDescriptor(dataUrl)
+      const comparison = compareDescriptors(stored, liveDesc)
+      await logVerification({
+        isMatch: comparison.isMatch,
+        confidence: comparison.confidence,
+        distance: comparison.distance,
+        auto: true,
+      })
+    } catch (err) {
+      setError(err?.message || 'Face matching failed')
+    } finally {
+      setMatching(false)
+    }
+  }
+
+  async function handleManualVerify(success) {
+    await logVerification({ isMatch: success, confidence: null, distance: null, auto: false })
+  }
+
+  function reset() {
+    setIdNumber(''); setVoter(null); setLivePhoto(''); setError(''); setResult(null); setMatching(false)
+  }
+
+  const hasStoredEncoding = !!normalizeDescriptor(voter?.face_descriptor)
 
   return (
     <div className="register-page" data-page="verify-voter">
@@ -87,7 +142,14 @@ export default function VerifyVoter() {
             </span>
             <h1 style={{ margin: 0 }}>Verify Voter</h1>
           </div>
-          <p className="muted">Enter the voter's ID, then capture a live photo to confirm identity.</p>
+          <p className="muted">Search a voter, then hold the camera up. The system matches live.</p>
+
+          {modelsLoading && (
+            <div className="models-loading">
+              <div className="face-spinner small" />
+              <span>{modelProgress || 'Loading face recognition (one-time, ~6 MB)...'}</span>
+            </div>
+          )}
 
           <form onSubmit={handleSearch} className="verify-search">
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -98,8 +160,7 @@ export default function VerifyVoter() {
                 onChange={(e) => {
                   let v = e.target.value
                   const upper = v.toUpperCase()
-                  const looksLikePassport = /^[A-Z]/.test(upper)
-                  v = looksLikePassport
+                  v = /^[A-Z]/.test(upper)
                     ? upper.replace(/[^A-Z0-9]/g, '')
                     : v.replace(/\D/g, '')
                   setIdNumber(v.slice(0, 9))
@@ -130,9 +191,7 @@ export default function VerifyVoter() {
                 <div><dt>Gender</dt><dd>{voter.gender}</dd></div>
                 <div><dt>DOB</dt><dd>{voter.dob}</dd></div>
                 <div><dt>County</dt><dd>{voter.county}</dd></div>
-                <div><dt>Constituency</dt><dd>{voter.constituency}</dd></div>
                 <div><dt>Ward</dt><dd>{voter.ward}</dd></div>
-                <div><dt>Polling Station</dt><dd>{voter.polling_station}</dd></div>
               </dl>
 
               <div className="verify-photos">
@@ -145,25 +204,40 @@ export default function VerifyVoter() {
                 <div className="verify-photo-block">
                   <span className="verify-photo-label">Live Capture</span>
                   {livePhoto ? (
-                    <>
-                      <img src={livePhoto} alt="Live" />
-                      <button className="btn-ghost" onClick={() => setLivePhoto('')}>Retake</button>
-                    </>
+                    <img src={livePhoto} alt="Live" />
                   ) : (
-                    <button className="btn-ghost verify-capture-btn" onClick={() => setFaceOpen(true)}>
-                      Capture Live Photo
+                    <button className="btn-ghost verify-capture-btn"
+                      disabled={modelsLoading || matching}
+                      onClick={() => setFaceOpen(true)}>
+                      {modelsLoading ? 'Loading model...' : 'Start Live Verification'}
                     </button>
                   )}
                 </div>
               </div>
 
-              {livePhoto && (
+              {matching && (
+                <div className="verify-processing">
+                  <div className="face-spinner" />
+                  <span>Comparing face to stored record...</span>
+                </div>
+              )}
+
+              {!hasStoredEncoding && livePhoto && !matching && !result && (
                 <div className="verify-decision">
-                  <p className="muted">Compare both photos, then confirm the result.</p>
+                  <p className="muted">No face encoding on file for this voter (registered before automation). Compare manually.</p>
                   <div className="verify-decision-btns">
-                    <button className="btn-primary btn-success" disabled={logging} onClick={() => logVerification(true)}>Match - Verified</button>
-                    <button className="btn-primary btn-danger" disabled={logging} onClick={() => logVerification(false)}>No Match - Failed</button>
+                    <button className="btn-primary btn-success" onClick={() => handleManualVerify(true)}>Match - Verified</button>
+                    <button className="btn-primary btn-danger" onClick={() => handleManualVerify(false)}>No Match - Failed</button>
                   </div>
+                </div>
+              )}
+
+              {result && (
+                <div className={'verify-result-badge ' + (result.success ? 'is-success' : 'is-fail')}>
+                  <strong>{result.success ? 'MATCH' : 'NO MATCH'}</strong>
+                  {typeof result.confidence === 'number' && (
+                    <span>Confidence: {(result.confidence * 100).toFixed(1)}%</span>
+                  )}
                 </div>
               )}
 
@@ -175,9 +249,15 @@ export default function VerifyVoter() {
         </div>
       </main>
 
-      <FaceCapture open={faceOpen} onClose={() => setFaceOpen(false)}
-        onCapture={(d) => setLivePhoto(d)} title="Capture Live Face" />
-      <VerifyResult result={result} onClose={() => setResult(null)} autoCloseMs={0} />
+      <FaceCapture
+        open={faceOpen}
+        onClose={() => setFaceOpen(false)}
+        storedDescriptor={hasStoredEncoding ? voter?.face_descriptor : null}
+        onMatch={handleFaceMatch}
+        onCapture={handleLiveCaptured}
+        title={hasStoredEncoding ? 'Look at the camera to verify' : 'Capture Live Photo'}
+      />
+      <VerifyResult result={result} onClose={() => setResult(null)} autoCloseMs={2400} />
     </div>
   )
 }

@@ -1,15 +1,16 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { LOCATIONS } from '../lib/locations'
 import { features } from '../lib/features'
+import { loadFaceModels, computeFaceDescriptor } from '../lib/faceMatch'
 import Logo from '../components/Logo'
 import FaceCapture from '../components/FaceCapture'
 
 const STEPS = ['Personal', 'Location', 'Biometric']
 
-const NAME_RE       = /^[A-Za-z][A-Za-z '-]*$/
-const PASSPORT_RE   = /^[A-Z]\d{7}$/
+const NAME_RE     = /^[A-Za-z][A-Za-z '-]*$/
+const PASSPORT_RE = /^[A-Z]\d{7}$/
 
 const NOW = new Date()
 const DATE_18Y_AGO  = new Date(NOW.getFullYear() - 18, NOW.getMonth(), NOW.getDate())
@@ -59,11 +60,20 @@ export default function VoterRegistration() {
     county: '', constituency: '', ward: '', polling_station: '',
     face_photo_data: '',
   })
+  const [faceDescriptor, setFaceDescriptor] = useState(null)
+  const [faceProcessing, setFaceProcessing] = useState(false)
+  const [faceError, setFaceError] = useState('')
   const [touched, setTouched] = useState({})
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
   const [faceOpen, setFaceOpen] = useState(false)
+
+  useEffect(() => {
+    loadFaceModels().catch(err => {
+      console.warn('[face] background model load failed:', err)
+    })
+  }, [])
 
   const update = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const markTouched = (k) => setTouched(t => ({ ...t, [k]: true }))
@@ -89,11 +99,27 @@ export default function VoterRegistration() {
   const canNext1 = !errors.first_name && !errors.middle_name && !errors.last_name
     && !errors.gender && !errors.id_type && !errors.id_number && !errors.dob
   const canNext2 = !!(form.county && form.constituency && form.ward && form.polling_station)
-  const canSubmit = canNext1 && canNext2 && !!form.face_photo_data
+  const canSubmit = canNext1 && canNext2 && !!form.face_photo_data && Array.isArray(faceDescriptor)
+
+  async function handleFaceCaptured(dataUrl) {
+    setFaceProcessing(true)
+    setFaceError('')
+    try {
+      const desc = await computeFaceDescriptor(dataUrl)
+      update('face_photo_data', dataUrl)
+      setFaceDescriptor(desc)
+    } catch (err) {
+      setFaceError(err?.message || 'Face processing failed. Please try again.')
+      update('face_photo_data', '')
+      setFaceDescriptor(null)
+    } finally {
+      setFaceProcessing(false)
+    }
+  }
 
   async function handleSubmit() {
     if (!canSubmit) {
-      setError('Fix all errors before registering this voter.')
+      setError('Fix all errors and capture a face before registering.')
       return
     }
     setSaving(true); setError('')
@@ -111,6 +137,7 @@ export default function VoterRegistration() {
       ward: form.ward,
       polling_station: form.polling_station,
       face_photo_data: form.face_photo_data,
+      face_descriptor: faceDescriptor,
       registered_by: user?.id ?? null,
     })
     setSaving(false)
@@ -139,7 +166,7 @@ export default function VoterRegistration() {
             strokeLinecap="round" strokeLinejoin="round" className="tick-check" />
         </svg>
         <h2>Voter Registered</h2>
-        <p className="muted">Returning to previous page</p>
+        <p className="muted">Face encoding stored. Returning...</p>
       </div>
     )
   }
@@ -294,21 +321,49 @@ export default function VoterRegistration() {
               <p className="muted">Step 3 of 3</p>
               <div className="biometric-section">
                 <h3>Face Capture</h3>
+
                 {!features.camera && (
                   <div className="form-error">This browser doesn't support camera access. Use Chrome, Safari 15+, Edge, or Firefox.</div>
                 )}
-                {features.camera && form.face_photo_data && (
-                  <div className="face-preview">
-                    <img src={form.face_photo_data} alt="Captured face" className="face-thumb-lg" />
-                    <button className="btn-ghost" onClick={() => setFaceOpen(true)}>Retake</button>
+
+                {features.camera && faceProcessing && (
+                  <div className="face-processing">
+                    <div className="face-spinner" />
+                    <span>Analysing face...</span>
                   </div>
                 )}
-                {features.camera && !form.face_photo_data && (
-                  <button className="btn-primary" onClick={() => setFaceOpen(true)}>Open Camera</button>
+
+                {features.camera && !faceProcessing && form.face_photo_data && faceDescriptor && (
+                  <div className="face-preview">
+                    <img src={form.face_photo_data} alt="Captured face" className="face-thumb-lg" />
+                    <div className="face-preview-actions">
+                      <button className="btn-ghost"
+                        onClick={() => { update('face_photo_data', ''); setFaceDescriptor(null); setFaceOpen(true) }}>
+                        Retake
+                      </button>
+                    </div>
+                    <span className="face-ok-hint">Face encoding captured</span>
+                  </div>
                 )}
-                {!form.face_photo_data && <span className="field-hint">Face photo is required</span>}
+
+                {features.camera && !faceProcessing && !form.face_photo_data && !faceError && (
+                  <button className="btn-primary" onClick={() => setFaceOpen(true)}>
+                    Open Camera
+                  </button>
+                )}
+
+                {faceError && (
+                  <div className="form-error">
+                    {faceError}
+                    <button className="btn-ghost" style={{ marginTop: 10 }}
+                      onClick={() => { setFaceError(''); setFaceOpen(true) }}>
+                      Try Again
+                    </button>
+                  </div>
+                )}
+
                 <h3 style={{ marginTop: 24 }}>Fingerprint Enroll</h3>
-                <p className="muted">WebAuthn enrollment lands in a later release.</p>
+                <p className="muted">Not available in this build.</p>
               </div>
             </>
           )}
@@ -319,7 +374,7 @@ export default function VoterRegistration() {
             {step > 0 && <button className="btn-ghost" onClick={() => setStep(s => s - 1)}>Back</button>}
             {step < 2 && <button className="btn-primary" onClick={onContinue}>Continue</button>}
             {step === 2 && (
-              <button className="btn-primary" disabled={saving} onClick={handleSubmit}>
+              <button className="btn-primary" disabled={!canSubmit || saving} onClick={handleSubmit}>
                 {saving ? 'Registering' : 'Complete Registration'}
               </button>
             )}
@@ -328,7 +383,7 @@ export default function VoterRegistration() {
       </main>
 
       <FaceCapture open={faceOpen} onClose={() => setFaceOpen(false)}
-        onCapture={(d) => update('face_photo_data', d)} title="Capture Voter Face" />
+        onCapture={handleFaceCaptured} title="Capture Voter Face" />
     </div>
   )
 }

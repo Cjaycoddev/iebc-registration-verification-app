@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import AdminDashboard from './pages/AdminDashboard'
+import AdminVoters from './pages/AdminVoters'
 import RegisterOfficer from './pages/RegisterOfficer'
 import VoterRegistration from './pages/VoterRegistration'
 import VerifyVoter from './pages/VerifyVoter'
@@ -48,7 +49,6 @@ function Protected({ children, adminOnly = false }) {
   if (session === undefined) return <div className="boot-loader">Loading</div>
   if (!session) return <Navigate to="/login" replace />
   if (role === undefined) return <div className="boot-loader">Loading</div>
-
   if (adminOnly && role !== 'superadmin') return <Navigate to="/officer" replace />
   return children
 }
@@ -59,6 +59,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/admin" element={<Protected adminOnly><AdminDashboard /></Protected>} />
+        <Route path="/admin/voters" element={<Protected adminOnly><AdminVoters /></Protected>} />
         <Route path="/admin/register-officer" element={<Protected adminOnly><RegisterOfficer /></Protected>} />
         <Route path="/admin/voter-registration" element={<Protected><VoterRegistration /></Protected>} />
         <Route path="/admin/verify" element={<Protected><VerifyVoter /></Protected>} />
