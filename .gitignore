@@ -24,3 +24,17 @@ dist-ssr
 *.sw?
 
 .env.local
+
+# Local backups
+*.bak_*
+
+
+# dev scratch
+!requirements.txt
+
+
+# dev scratch dumps
+iebc_dump*.txt
+iebc_src_*.txt
+Pasted*.txt
+
