@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     if (!token) return res.status(401).json({ error: 'Missing auth token' })
 
     const { data: { user }, error: userErr } = await supabaseAdmin.auth.getUser(token)
-    if (userErr || !user) return res.status(401).json({ error: 'Invalid token' })
+    if (userErr || !user) return res.status(401).json({ error: 'Invalid token: ' + (userErr?.message || 'no user') })
 
     const { data: profile } = await supabaseAdmin
       .from('profiles')
