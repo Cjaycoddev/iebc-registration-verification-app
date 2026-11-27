@@ -1,0 +1,61 @@
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
+import Login from './pages/Login'
+import AdminDashboard from './pages/AdminDashboard'
+import RegisterOfficer from './pages/RegisterOfficer'
+import VoterRegistration from './pages/VoterRegistration'
+import VerifyVoter from './pages/VerifyVoter'
+import OfficerDashboard from './pages/OfficerDashboard'
+
+function useSession() {
+  const [session, setSession] = useState(undefined)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
+  return session
+}
+
+function useRole(session) {
+  const [role, setRole] = useState(undefined)
+  useEffect(() => {
+    if (session === undefined) return
+    if (!session) { setRole(null); return }
+    supabase.from('profiles').select('role').eq('id', session.user.id).maybeSingle()
+      .then(({ data, error }) => {
+        if (error || !data) setRole('__invalid__')
+        else setRole(data.role)
+      })
+  }, [session])
+  return role
+}
+
+function Protected({ children, adminOnly = false }) {
+  const session = useSession()
+  const role = useRole(session)
+
+  if (session === undefined) return <div className="boot-loader">Loading</div>
+  if (!session) return <Navigate to="/login" replace />
+  if (role === undefined) return <div className="boot-loader">Loading</div>
+
+  if (adminOnly && role !== 'superadmin') return <Navigate to="/officer" replace />
+  return children
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/admin" element={<Protected adminOnly><AdminDashboard /></Protected>} />
+        <Route path="/admin/register-officer" element={<Protected adminOnly><RegisterOfficer /></Protected>} />
+        <Route path="/admin/voter-registration" element={<Protected><VoterRegistration /></Protected>} />
+        <Route path="/admin/verify" element={<Protected><VerifyVoter /></Protected>} />
+        <Route path="/officer" element={<Protected><OfficerDashboard /></Protected>} />
+        <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}

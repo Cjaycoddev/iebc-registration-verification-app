@@ -1,0 +1,48 @@
+﻿C:\Users\JONAH\IEBC Registration and verification app\src\pages\AdminDashboard.jsx:57
+supabase.from('voters').select('id, county, gender, created_at, verified_at'),
+      ])
+      setOfficers(off ?? [])
+      setVoters(vot ?? [])
+      setLoading(false)
+    })()
+----
+C:\Users\JONAH\IEBC Registration and verification app\src\pages\AdminVoters.jsx:28
+supabase.from('voters').select('*').order('created_at', { ascending: false }),
+        supabase.from('verification_logs').select('*').order('created_at', { ascending: false }),
+      ])
+      if (vErr) setError(vErr.message)
+      setVoters(v ?? [])
+      setLogs(l ?? [])
+----
+C:\Users\JONAH\IEBC Registration and verification app\src\pages\OfficerDashboard.jsx:17
+.from('voters')
+        .select('id, verified_at')
+        .eq('registered_by', user.id)
+      const list = data || []
+      setCounts({
+        mine: list.length,
+----
+C:\Users\JONAH\IEBC Registration and verification app\src\pages\VerifyVoter.jsx:49
+.from('voters').select('*').eq('id_number', t).maybeSingle()
+    setSearching(false)
+    if (err) return setError(err.message)
+    if (!data) return setError('No voter found with that ID number.')
+    setVoter(data)
+  }
+----
+C:\Users\JONAH\IEBC Registration and verification app\src\pages\VerifyVoter.jsx:70
+await supabase.from('voters').update({ verified_at: now }).eq('id', voter.id)
+      setVoter(v => ({ ...v, verified_at: now }))
+    }
+    setResult({
+      success: isMatch,
+      voterName: voter.first_name + ' ' + voter.last_name,
+----
+C:\Users\JONAH\IEBC Registration and verification app\src\pages\VoterRegistration.jsx:127
+const { error } = await supabase.from('voters').insert({
+      first_name: form.first_name.trim(),
+      middle_name: form.middle_name.trim() || null,
+      last_name: form.last_name.trim(),
+      gender: form.gender,
+      id_type: form.id_type,
+----

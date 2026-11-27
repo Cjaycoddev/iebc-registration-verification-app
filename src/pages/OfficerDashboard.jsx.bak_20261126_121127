@@ -1,0 +1,36 @@
+﻿import { useNavigate } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import Logo from '../components/Logo'
+
+export default function OfficerDashboard() {
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    navigate('/login', { replace: true })
+  }
+
+  return (
+    <div className="admin">
+      <header className="admin-header">
+        <Logo size={36} showText />
+        <button className="btn-ghost" onClick={handleLogout}>Sign out</button>
+      </header>
+      <main className="admin-main">
+        <div className="admin-title-row">
+          <h1>Officer Dashboard</h1>
+        </div>
+        <div className="kpi-grid">
+          <button className="kpi-card" onClick={() => navigate('/admin/voter-registration')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <span className="kpi-label">Register Voter</span>
+            <span className="kpi-value"></span>
+          </button>
+          <button className="kpi-card" onClick={() => navigate('/admin/verify')} style={{ cursor: 'pointer', textAlign: 'left' }}>
+            <span className="kpi-label">Verify Voter</span>
+            <span className="kpi-value"></span>
+          </button>
+        </div>
+      </main>
+    </div>
+  )
+}

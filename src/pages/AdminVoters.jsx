@@ -3,12 +3,44 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Logo from '../components/Logo'
 
-const PAGE_SIZE = 25
+const PAGE_SIZE = 50
+
+// Explicitly list columns  face_photo_data is EXCLUDED here for speed
+const LIST_COLUMNS = 'id, first_name, middle_name, last_name, id_number, id_type, gender, dob, county, constituency, ward, polling_station, polling_center, phone, created_at, verified_at'
+
+async function fetchAllRows(table, columns, orderBy = 'created_at') {
+  const PAGE = 1000
+  // Parallel batches  5 pages at a time
+  const PARALLEL = 5
+  let round = 0
+  let all = []
+
+  while (round < 50) {  // hard cap 50 rounds  5  1000 = 250k rows
+    const promises = []
+    for (let k = 0; k < PARALLEL; k++) {
+      const from = (round * PARALLEL + k) * PAGE
+      promises.push(
+        supabase.from(table).select(columns)
+          .order(orderBy, { ascending: false })
+          .range(from, from + PAGE - 1)
+      )
+    }
+    const results = await Promise.all(promises)
+    let got = 0
+    for (const res of results) {
+      if (res.error || !res.data) continue
+      all = all.concat(res.data)
+      got += res.data.length
+    }
+    if (got < PARALLEL * PAGE) break  // last round had short pages
+    round++
+  }
+  return all
+}
 
 export default function AdminVoters() {
   const navigate = useNavigate()
   const [voters, setVoters] = useState([])
-  const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
@@ -20,20 +52,40 @@ export default function AdminVoters() {
   const [sortDir, setSortDir] = useState('desc')
   const [page, setPage] = useState(0)
   const [selected, setSelected] = useState(null)
+  const [selectedFull, setSelectedFull] = useState(null)
+  const [loadingFull, setLoadingFull] = useState(false)
+  const [selectedLogs, setSelectedLogs] = useState([])
 
   useEffect(() => {
     (async () => {
       setLoading(true); setError('')
-      const [{ data: v, error: vErr }, { data: l }] = await Promise.all([
-        supabase.from('voters').select('*').order('created_at', { ascending: false }),
-        supabase.from('verification_logs').select('*').order('created_at', { ascending: false }),
-      ])
-      if (vErr) setError(vErr.message)
-      setVoters(v ?? [])
-      setLogs(l ?? [])
+      try {
+        const list = await fetchAllRows('voters', LIST_COLUMNS, 'created_at')
+        setVoters(list)
+      } catch (e) {
+        setError(e.message || 'Failed to load voters')
+      }
       setLoading(false)
     })()
   }, [])
+
+  // When a row is clicked, fetch its full record + verification history
+  useEffect(() => {
+    if (!selected) { setSelectedFull(null); setSelectedLogs([]); return }
+    setLoadingFull(true)
+    ;(async () => {
+      const [voterRes, logsRes] = await Promise.all([
+        supabase.from('voters').select('*').eq('id', selected.id).maybeSingle(),
+        supabase.from('verification_logs').select('*')
+          .eq('voter_id', selected.id)
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ])
+      if (voterRes.data) setSelectedFull(voterRes.data)
+      setSelectedLogs(logsRes.data || [])
+      setLoadingFull(false)
+    })()
+  }, [selected])
 
   const counties = useMemo(
     () => Array.from(new Set(voters.map(v => v.county).filter(Boolean))).sort(),
@@ -92,7 +144,7 @@ export default function AdminVoters() {
   }
 
   function exportCsv() {
-    const headers = ['first_name','middle_name','last_name','id_type','id_number','gender','dob','county','constituency','ward','polling_station','created_at','verified_at']
+    const headers = ['first_name','middle_name','last_name','id_type','id_number','gender','dob','phone','county','constituency','ward','polling_station','polling_center','created_at','verified_at']
     const rows = [headers.join(',')].concat(filtered.map(v =>
       headers.map(h => {
         const val = v[h] == null ? '' : String(v[h])
@@ -108,11 +160,6 @@ export default function AdminVoters() {
     URL.revokeObjectURL(url)
   }
 
-  const selectedLogs = useMemo(() => {
-    if (!selected) return []
-    return logs.filter(l => l.voter_id === selected.id)
-  }, [selected, logs])
-
   return (
     <div className="admin">
       <header className="admin-header">
@@ -126,11 +173,13 @@ export default function AdminVoters() {
         <div className="admin-title-row">
           <div>
             <h1>All Voters</h1>
-            <p className="muted">{filtered.length} record{filtered.length === 1 ? '' : 's'} matching filters</p>
+            <p className="muted">
+              {loading ? 'Loading...' : `${filtered.length.toLocaleString()} record${filtered.length === 1 ? '' : 's'} matching filters`}
+            </p>
           </div>
           <div className="admin-actions">
-            <button className="btn-ghost" onClick={exportCsv}>Export CSV</button>
-            <button className="btn-primary" onClick={() => navigate('/admin/voter-registration')}>+ Register Voter</button>
+            <button className="btn-ghost" onClick={exportCsv} disabled={loading}>Export CSV</button>
+            <button className="btn-primary" onClick={() => navigate('/admin/upload-voters')}>Upload CSV</button>
           </div>
         </div>
 
@@ -163,11 +212,6 @@ export default function AdminVoters() {
         ) : filtered.length === 0 ? (
           <div className="empty-state">
             <p>No voters matching your filters.</p>
-            {voters.length === 0 && (
-              <button className="btn-primary" onClick={() => navigate('/admin/voter-registration')}>
-                Register the first voter
-              </button>
-            )}
           </div>
         ) : (
           <>
@@ -175,11 +219,11 @@ export default function AdminVoters() {
               <table className="officers-table">
                 <thead>
                   <tr>
-                    <th onClick={() => toggleSort('full_name')} className={sortKey === 'full_name' ? 'sorted' : ''}>Name <SortArrow active={sortKey === 'full_name'} dir={sortDir} /></th>
-                    <th onClick={() => toggleSort('id_number')} className={sortKey === 'id_number' ? 'sorted' : ''}>ID <SortArrow active={sortKey === 'id_number'} dir={sortDir} /></th>
+                    <th onClick={() => toggleSort('full_name')} className={sortKey === 'full_name' ? 'sorted' : ''}>Name</th>
+                    <th onClick={() => toggleSort('id_number')} className={sortKey === 'id_number' ? 'sorted' : ''}>ID</th>
                     <th>County / Ward</th>
                     <th>Gender</th>
-                    <th onClick={() => toggleSort('created_at')} className={sortKey === 'created_at' ? 'sorted' : ''}>Registered <SortArrow active={sortKey === 'created_at'} dir={sortDir} /></th>
+                    <th onClick={() => toggleSort('created_at')} className={sortKey === 'created_at' ? 'sorted' : ''}>Registered</th>
                     <th>Status</th>
                     <th></th>
                   </tr>
@@ -189,9 +233,9 @@ export default function AdminVoters() {
                     <tr key={v.id}>
                       <td data-label="Name">
                         <div className="voter-name-cell">
-                          {v.face_photo_data
-                            ? <img src={v.face_photo_data} alt="" className="voter-avatar" />
-                            : <div className="voter-avatar voter-avatar-empty" />}
+                          <div className="voter-avatar voter-avatar-empty">
+                            {(v.first_name?.[0] || '') + (v.last_name?.[0] || '')}
+                          </div>
                           <span>{v.first_name} {v.last_name}</span>
                         </div>
                       </td>
@@ -224,41 +268,52 @@ export default function AdminVoters() {
         <div className="voter-modal-backdrop" onClick={() => setSelected(null)}>
           <div className="voter-modal" onClick={e => e.stopPropagation()}>
             <header>
-              <h3>{selected.first_name} {selected.middle_name || ''} {selected.last_name}</h3>
+              <h3>{selectedFull ? `${selectedFull.first_name} ${selectedFull.middle_name || ''} ${selectedFull.last_name}` : `${selected.first_name} ${selected.last_name}`}</h3>
               <button onClick={() => setSelected(null)} aria-label="Close">x</button>
             </header>
             <div className="voter-modal-body">
-              {selected.face_photo_data && (
-                <img src={selected.face_photo_data} alt="Face" className="voter-modal-photo" />
-              )}
-              <dl className="verify-details">
-                <div><dt>ID Type</dt><dd>{selected.id_type}</dd></div>
-                <div><dt>ID Number</dt><dd>{selected.id_number}</dd></div>
-                <div><dt>Gender</dt><dd style={{ textTransform: 'capitalize' }}>{selected.gender}</dd></div>
-                <div><dt>DOB</dt><dd>{selected.dob}</dd></div>
-                <div><dt>County</dt><dd>{selected.county}</dd></div>
-                <div><dt>Constituency</dt><dd>{selected.constituency}</dd></div>
-                <div><dt>Ward</dt><dd>{selected.ward}</dd></div>
-                <div><dt>Polling Station</dt><dd>{selected.polling_station}</dd></div>
-                <div><dt>Registered</dt><dd>{new Date(selected.created_at).toLocaleString()}</dd></div>
-                <div><dt>Verified</dt><dd>{selected.verified_at ? new Date(selected.verified_at).toLocaleString() : 'Not yet'}</dd></div>
-              </dl>
-
-              <h4>Verification History</h4>
-              {selectedLogs.length === 0 ? (
-                <p className="muted">No verification attempts recorded.</p>
+              {loadingFull ? (
+                <div className="skeleton-list">{[...Array(3)].map((_, i) => <div key={i} className="skeleton-row" />)}</div>
               ) : (
-                <ul className="verification-history">
-                  {selectedLogs.map(l => (
-                    <li key={l.id}>
-                      <span className={'status-pill ' + (l.success ? 'status-active' : 'status-inactive')}>
-                        {l.success ? 'Passed' : 'Failed'}
-                      </span>
-                      <span className="muted">{l.method}</span>
-                      <span className="muted">{new Date(l.created_at).toLocaleString()}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  {selectedFull?.face_photo_data
+                    ? <img src={selectedFull.face_photo_data} alt="Face" className="voter-modal-photo" />
+                    : <div className="voter-modal-photo voter-modal-photo-empty">No photo on file</div>}
+                  <dl className="verify-details">
+                    <div><dt>ID Type</dt><dd>{selectedFull?.id_type || selected.id_type}</dd></div>
+                    <div><dt>ID Number</dt><dd>{selectedFull?.id_number || selected.id_number}</dd></div>
+                    <div><dt>Gender</dt><dd style={{ textTransform: 'capitalize' }}>{selectedFull?.gender || selected.gender}</dd></div>
+                    <div><dt>DOB</dt><dd>{selectedFull?.dob || selected.dob}</dd></div>
+                    <div><dt>Phone</dt><dd>{selectedFull?.phone || selected.phone || ''}</dd></div>
+                    <div><dt>County</dt><dd>{selectedFull?.county || selected.county}</dd></div>
+                    <div><dt>Constituency</dt><dd>{selectedFull?.constituency || selected.constituency}</dd></div>
+                    <div><dt>Ward</dt><dd>{selectedFull?.ward || selected.ward}</dd></div>
+                    <div><dt>Polling Center</dt><dd>{selectedFull?.polling_center || selected.polling_center || ''}</dd></div>
+                    <div><dt>Polling Station</dt><dd>{selectedFull?.polling_station || selected.polling_station}</dd></div>
+                    <div><dt>Registered</dt><dd>{new Date(selectedFull?.created_at || selected.created_at).toLocaleString()}</dd></div>
+                    <div><dt>Verified</dt><dd>{selectedFull?.verified_at || selected.verified_at ? new Date(selectedFull?.verified_at || selected.verified_at).toLocaleString() : 'Not yet'}</dd></div>
+                  </dl>
+
+                  <h4>Verification History</h4>
+                  {selectedLogs.length === 0 ? (
+                    <p className="muted">No verification attempts recorded.</p>
+                  ) : (
+                    <ul className="verification-history">
+                      {selectedLogs.map(l => (
+                        <li key={l.id}>
+                          <span className={'status-pill ' + (l.success ? 'status-active' : 'status-inactive')}>
+                            {l.success ? 'Passed' : 'Failed'}
+                          </span>
+                          <span className="muted">{l.method}</span>
+                          {typeof l.confidence === 'number' && (
+                            <span className="muted">{(l.confidence * 100).toFixed(0)}%</span>
+                          )}
+                          <span className="muted">{new Date(l.created_at).toLocaleString()}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -266,9 +321,4 @@ export default function AdminVoters() {
       )}
     </div>
   )
-}
-
-function SortArrow({ active, dir }) {
-  if (!active) return <span className="sort-arrow muted">updown</span>
-  return <span className="sort-arrow active">{dir === 'asc' ? 'up' : 'down'}</span>
 }

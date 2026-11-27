@@ -1673,3 +1673,243 @@ html, body {
   transition: width .35s ease;
   box-shadow: 0 0 12px rgba(16,185,129,.6);
 }
+// ===== IEBC: CSV Upload UI =====
+.upload-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 28px;
+  box-shadow: 0 1px 3px rgba(15,23,42,.04);
+  position: relative;
+  overflow: hidden;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.upload-card::before {
+  content: '';
+  position: absolute; top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #c8102e 0%, #0f766e 50%, #059669 100%);
+}
+
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+  text-align: center;
+}
+.upload-dropzone:hover {
+  border-color: #0f766e;
+  background: #f0fdfa;
+}
+.upload-icon {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0f766e 0%, #059669 100%);
+  display: grid; place-items: center;
+  color: #fff;
+  margin-bottom: 6px;
+}
+.upload-dropzone strong { font-size: 1rem; color: #0f172a; }
+.upload-dropzone .muted { font-size: .78rem; max-width: 500px; }
+
+.upload-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+.upload-stat {
+  padding: 16px;
+  border-radius: 12px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.upload-stat span { font-size: 1.6rem; font-weight: 700; }
+.upload-stat small { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; opacity: .8; }
+.upload-stat.is-ok   { background: #ecfdf5; color: #047857; }
+.upload-stat.is-warn { background: #fffbeb; color: #b45309; }
+.upload-stat.is-err  { background: #fef2f2; color: #b91c1c; }
+
+.upload-controls {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 16px 0;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+.upload-controls label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: .85rem;
+  color: #475569;
+  font-weight: 500;
+}
+.upload-controls select {
+  padding: 8px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: .85rem;
+}
+.upload-checkbox input { accent-color: #0f766e; }
+
+.upload-details {
+  margin: 12px 0;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: .85rem;
+}
+.upload-details summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #475569;
+}
+.upload-details ul {
+  margin: 10px 0 0;
+  padding-left: 20px;
+  color: #64748b;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.upload-preview { margin: 16px 0; }
+.upload-preview h3 {
+  margin: 0 0 10px;
+  font-size: .92rem;
+  color: #334155;
+}
+
+.upload-progress {
+  position: relative;
+  height: 32px;
+  background: #f1f5f9;
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 20px 0;
+  display: flex;
+  align-items: center;
+}
+.upload-progress-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, #0f766e 0%, #059669 100%);
+  transition: width .3s ease;
+  border-radius: 999px;
+}
+.upload-progress span {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  text-align: center;
+  font-size: .82rem;
+  font-weight: 700;
+  color: #0f172a;
+  mix-blend-mode: difference;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,.3);
+}
+
+.upload-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 20px;
+  margin-top: 20px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.upload-result { text-align: center; }
+.upload-result-icon { display: grid; place-items: center; margin-bottom: 16px; }
+.upload-result-icon .tick { width: 80px; height: 80px; }
+.upload-result h2 { margin: 0 0 6px; color: #0f172a; }
+// ===== IEBC: CSV Alias Mapping =====
+.mapping-panel {
+  margin: 20px 0;
+  padding: 18px 20px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+}
+.mapping-panel h3 {
+  margin: 0 0 14px;
+  font-size: .92rem;
+  color: #0f172a;
+  font-weight: 600;
+}
+.mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 8px;
+}
+.mapping-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: .78rem;
+}
+.mapping-item.is-ok {
+  border-color: #a7f3d0;
+  background: #f0fdf4;
+}
+.mapping-item.is-missing {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+.mapping-from {
+  font-weight: 600;
+  color: #334155;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mapping-item.is-ok .mapping-from { color: #047857; }
+.mapping-item.is-missing .mapping-from { color: #b91c1c; }
+.mapping-arrow { color: #94a3b8; font-weight: 700; }
+.mapping-to {
+  color: #0f766e;
+  font-family: 'SF Mono', 'Consolas', monospace;
+  font-size: .75rem;
+  font-weight: 500;
+}
+// ===== IEBC: Avatar + Photo Empty =====
+.voter-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: .72rem;
+  font-weight: 700;
+  color: #0f766e;
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
+}
+.voter-avatar-empty { background: #f0fdfa; }
+
+.voter-modal-photo-empty {
+  display: grid;
+  place-items: center;
+  background: #f8fafc;
+  border: 2px dashed #cbd5e1;
+  color: #94a3b8;
+  font-size: .85rem;
+  font-weight: 500;
+}

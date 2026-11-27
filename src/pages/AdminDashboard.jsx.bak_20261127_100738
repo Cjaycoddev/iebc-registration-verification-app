@@ -1,0 +1,343 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import {
+  AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
+  XAxis, YAxis, Tooltip, CartesianGrid, Legend,
+} from 'recharts'
+import { supabase } from '../lib/supabase'
+import Logo from '../components/Logo'
+
+const COLORS = ['#0f766e', '#dc2626', '#64748b']
+const CHART_H = 240
+const RANGES = [
+  { key: '7d',  label: '7 days',  days: 7  },
+  { key: '14d', label: '14 days', days: 14 },
+  { key: '30d', label: '30 days', days: 30 },
+]
+
+function useContainerWidth(fallback = 700) {
+  const ref = useRef(null)
+  const [w, setW] = useState(fallback)
+  useEffect(() => {
+    if (!ref.current) return
+    const el = ref.current
+    const update = () => {
+      const x = el.clientWidth
+      if (x > 0) setW(x)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, w]
+}
+
+async function fetchAllVoters(columns) {
+  const pageSize = 1000
+  let all = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase
+      .from('voters')
+      .select(columns)
+      .order('id')
+      .range(from, from + pageSize - 1)
+    if (error) throw error
+    all = all.concat(data)
+    if (data.length < pageSize) break
+    from += pageSize
+  }
+  return all
+}
+
+export default function AdminDashboard() {
+  const navigate = useNavigate()
+  const [email, setEmail] = useState('')
+  const [officers, setOfficers] = useState([])
+  const [voters, setVoters] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' })
+  const [range, setRange] = useState('14d')
+  const [nowTs] = useState(() => Date.now())
+
+  const [areaRef, areaW] = useContainerWidth(700)
+  const [pieRef,  pieW ] = useContainerWidth(360)
+  const [barRef,  barW ] = useContainerWidth(700)
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setEmail(user?.email ?? '')
+      const [{ data: off }, { data: vot }] = await Promise.all([
+        supabase.from('officers').select('*').order('created_at', { ascending: false }),
+        fetchAllVoters('id, county, gender, created_at, verified_at')
+          .then(data => ({ data }))
+          .catch(error => ({ data: null, error })),
+      ])
+      setOfficers(off ?? [])
+      setVoters(vot ?? [])
+      setLoading(false)
+    })()
+  }, [])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    navigate('/login', { replace: true })
+  }
+
+  const filteredOfficers = useMemo(() => {
+    let list = [...officers]
+    if (search.trim()) {
+      const q = search.toLowerCase()
+      list = list.filter(o =>
+        o.full_name?.toLowerCase().includes(q) ||
+        o.email?.toLowerCase().includes(q) ||
+        o.phone?.includes(q)
+      )
+    }
+    list.sort((a, b) => {
+      const av = a[sort.key] ?? ''
+      const bv = b[sort.key] ?? ''
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0
+      return sort.dir === 'asc' ? cmp : -cmp
+    })
+    return list
+  }, [officers, search, sort])
+
+  const toggleSort = (key) => setSort(s =>
+    s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
+  )
+
+  const [todayStr] = useState(() => new Date().toDateString())
+  const todayCount = voters.filter(v => new Date(v.created_at).toDateString() === todayStr).length
+  const verifiedToday = voters.filter(v => v.verified_at && new Date(v.verified_at).toDateString() === todayStr).length
+  const activeOfficers = officers.filter(o => o.status === 'active').length
+
+  const genderData = useMemo(() => {
+    const map = { male: 0, female: 0, other: 0 }
+    voters.forEach(v => { if (map[v.gender] !== undefined) map[v.gender]++ })
+    return [
+      { name: 'Male', value: map.male },
+      { name: 'Female', value: map.female },
+      { name: 'Other', value: map.other },
+    ].filter(d => d.value > 0)
+  }, [voters])
+
+  const countyData = useMemo(() => {
+    const map = {}
+    voters.forEach(v => { map[v.county] = (map[v.county] || 0) + 1 })
+    return Object.entries(map)
+      .map(([county, count]) => ({ county, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 8)
+  }, [voters])
+
+  const dailyData = useMemo(() => {
+    const days = RANGES.find(r => r.key === range)?.days ?? 14
+    const out = []
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(nowTs)
+      d.setDate(d.getDate() - i)
+      const key = d.toDateString()
+      out.push({
+        day: d.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }),
+        count: voters.filter(v => new Date(v.created_at).toDateString() === key).length,
+      })
+    }
+    return out
+  }, [voters, range, nowTs])
+
+  const hasVoters = voters.length > 0
+
+  const kpis = [
+    { key: 'voters',   label: 'Total Voters',     value: voters.length,   tone: 'teal'  },
+    { key: 'today',    label: 'Registered Today', value: todayCount,      tone: 'green' },
+    { key: 'verified', label: 'Verified Today',   value: verifiedToday,   tone: 'blue'  },
+    { key: 'officers', label: 'Total Officers',   value: officers.length, tone: 'slate' },
+    { key: 'active',   label: 'Active Officers',  value: activeOfficers,  tone: 'green' },
+    { key: 'status',   label: 'System Status',    value: 'Online',        tone: 'green', isStatus: true },
+  ]
+
+  return (
+    <div className="admin">
+      <header className="admin-header">
+        <Logo size={36} showText />
+        <div className="admin-header-right">
+          <span className="admin-user">{email}</span>
+          <button className="btn-ghost" onClick={handleLogout}>Sign out</button>
+        </div>
+      </header>
+
+      <main className="admin-main">
+        <div className="admin-title-row">
+          <div>
+            <h1>Superadmin Dashboard</h1>
+            <p className="muted">Live overview of registration &amp; verification</p>
+          </div>
+          <div className="admin-actions">
+            <button className="btn-ghost" onClick={() => navigate('/admin/voters')}>All Voters</button>
+            <button className="btn-ghost" onClick={() => navigate('/admin/verify')}>Verify Voter</button>
+            <button className="btn-ghost" onClick={() => navigate('/admin/voter-registration')}>Register Voter</button>
+            <button className="btn-primary" onClick={() => navigate('/admin/register-officer')}>+ Register Officer</button>
+          </div>
+        </div>
+
+        <section className="kpi-grid kpi-grid-6">
+          {kpis.map((k, i) => (
+            <div key={k.key} className={'kpi-card kpi-tone-' + k.tone}
+                 style={{ animationDelay: (i * 40) + 'ms' }}>
+              <div className="kpi-top">
+                <span className="kpi-label">{k.label}</span>
+                <span className="kpi-dot" aria-hidden="true" />
+              </div>
+              <span className={'kpi-value' + (k.isStatus ? ' kpi-value-status' : '')}>
+                {k.value}
+                {k.isStatus && <span className="kpi-pulse" aria-hidden="true" />}
+              </span>
+            </div>
+          ))}
+        </section>
+
+        {!hasVoters ? (
+          <div className="chart-empty-card">
+            <h3>No data to visualise yet</h3>
+            <p className="muted">Charts will appear once voters are registered.</p>
+            <button className="btn-primary" onClick={() => navigate('/admin/voter-registration')}>
+              Register your first voter
+            </button>
+          </div>
+        ) : (
+          <>
+            <section className="charts-grid">
+              <div className="chart-card chart-wide">
+                <div className="chart-head">
+                  <h3>Registrations Over Time</h3>
+                  <div className="chart-tabs" role="tablist">
+                    {RANGES.map(r => (
+                      <button key={r.key} role="tab" aria-selected={range === r.key}
+                              className={'chart-tab' + (range === r.key ? ' active' : '')}
+                              onClick={() => setRange(r.key)}>
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div ref={areaRef} className="chart-body">
+                  <AreaChart width={areaW} height={CHART_H} data={dailyData}
+                             margin={{ top: 10, right: 14, left: -12, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="gradCount" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%"   stopColor="#0f766e" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#0f766e" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" vertical={false} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0' }} />
+                    <Area type="monotone" dataKey="count" stroke="#0f766e" strokeWidth={2.5}
+                          fill="url(#gradCount)" isAnimationActive={false} activeDot={{ r: 5 }} />
+                  </AreaChart>
+                </div>
+              </div>
+
+              <div className="chart-card">
+                <h3>Gender Split</h3>
+                <div ref={pieRef} className="chart-body">
+                  <PieChart width={pieW} height={CHART_H}>
+                    <Pie data={genderData} dataKey="value" nameKey="name"
+                         cx="50%" cy="50%" innerRadius={48} outerRadius={78}
+                         paddingAngle={2} isAnimationActive={false}
+                         label={({ value }) => value}>
+                      {genderData.map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="#fff" strokeWidth={2} />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0' }} />
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                  </PieChart>
+                </div>
+              </div>
+            </section>
+
+            <section className="charts-grid">
+              <div className="chart-card chart-wide">
+                <h3>Voters by County (Top 8)</h3>
+                <div ref={barRef} className="chart-body">
+                  <BarChart width={barW} height={CHART_H} data={countyData}
+                            layout="vertical" margin={{ left: 20, right: 16 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" horizontal={false} />
+                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                    <YAxis dataKey="county" type="category" width={100} tick={{ fontSize: 11, fill: '#334155' }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e2e8f0' }} cursor={{ fill: 'rgba(15,118,110,0.06)' }} />
+                    <Bar dataKey="count" fill="#0f766e" radius={[0, 6, 6, 0]} isAnimationActive={false} />
+                  </BarChart>
+                </div>
+              </div>
+            </section>
+          </>
+        )}
+
+        <section className="officers-section">
+          <div className="officers-toolbar">
+            <h2>Registration Officers</h2>
+            <input type="search" className="search-input"
+              placeholder="Search by name, email, or phone"
+              value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+
+          {loading ? (
+            <div className="skeleton-list">
+              {[...Array(3)].map((_, i) => <div key={i} className="skeleton-row" />)}
+            </div>
+          ) : filteredOfficers.length === 0 ? (
+            <div className="empty-state">
+              <p>No officers {search ? 'matching your search' : 'yet'}.</p>
+              <button className="btn-primary" onClick={() => navigate('/admin/register-officer')}>
+                Register {search ? 'another' : 'the first'} officer
+              </button>
+            </div>
+          ) : (
+            <div className="table-wrap">
+              <table className="officers-table">
+                <thead>
+                  <tr>
+                    <th onClick={() => toggleSort('full_name')} className={sort.key === 'full_name' ? 'sorted' : ''}>
+                      Full Name <SortArrow active={sort.key === 'full_name'} dir={sort.dir} />
+                    </th>
+                    <th onClick={() => toggleSort('email')} className={sort.key === 'email' ? 'sorted' : ''}>
+                      Email <SortArrow active={sort.key === 'email'} dir={sort.dir} />
+                    </th>
+                    <th>Phone</th>
+                    <th>Status</th>
+                    <th onClick={() => toggleSort('created_at')} className={sort.key === 'created_at' ? 'sorted' : ''}>
+                      Registered <SortArrow active={sort.key === 'created_at'} dir={sort.dir} />
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredOfficers.map(o => (
+                    <tr key={o.id}>
+                      <td data-label="Name">{o.full_name}</td>
+                      <td data-label="Email">{o.email}</td>
+                      <td data-label="Phone">{o.phone || '-'}</td>
+                      <td data-label="Status"><span className={'status-pill status-' + o.status}>{o.status}</span></td>
+                      <td data-label="Registered">{new Date(o.created_at).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  )
+}
+
+function SortArrow({ active, dir }) {
+  if (!active) return <span className="sort-arrow muted">updown</span>
+  return <span className="sort-arrow active">{dir === 'asc' ? 'up' : 'down'}</span>
+}

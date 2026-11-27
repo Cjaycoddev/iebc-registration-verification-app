@@ -15,16 +15,19 @@ const RANGES = [
   { key: '30d', label: '30 days', days: 30 },
 ]
 
+const EMPTY_STATS = {
+  total_voters: 0, total_officers: 0, active_officers: 0,
+  registered_today: 0, verified_today: 0,
+  gender_split: [], county_top: [], daily_series: [],
+}
+
 function useContainerWidth(fallback = 700) {
   const ref = useRef(null)
   const [w, setW] = useState(fallback)
   useEffect(() => {
     if (!ref.current) return
     const el = ref.current
-    const update = () => {
-      const x = el.clientWidth
-      if (x > 0) setW(x)
-    }
+    const update = () => { const x = el.clientWidth; if (x > 0) setW(x) }
     update()
     const ro = new ResizeObserver(update)
     ro.observe(el)
@@ -37,12 +40,12 @@ export default function AdminDashboard() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [officers, setOfficers] = useState([])
-  const [voters, setVoters] = useState([])
+  const [stats, setStats] = useState(EMPTY_STATS)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState({ key: 'created_at', dir: 'desc' })
   const [range, setRange] = useState('14d')
-  const [nowTs] = useState(() => Date.now())
 
   const [areaRef, areaW] = useContainerWidth(700)
   const [pieRef,  pieW ] = useContainerWidth(360)
@@ -52,12 +55,19 @@ export default function AdminDashboard() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser()
       setEmail(user?.email ?? '')
-      const [{ data: off }, { data: vot }] = await Promise.all([
-        supabase.from('officers').select('*').order('created_at', { ascending: false }),
-        supabase.from('voters').select('id, county, gender, created_at, verified_at'),
+
+      const [statsRes, officersRes] = await Promise.all([
+        supabase.rpc('get_dashboard_stats'),
+        // Officers: small table, no need to batch  but only needed columns
+        supabase.from('officers')
+          .select('id, full_name, email, phone, status, created_at')
+          .order('created_at', { ascending: false }),
       ])
-      setOfficers(off ?? [])
-      setVoters(vot ?? [])
+
+      if (statsRes.error) setError('Dashboard stats failed: ' + statsRes.error.message)
+      else setStats(statsRes.data || EMPTY_STATS)
+
+      setOfficers(officersRes.data ?? [])
       setLoading(false)
     })()
   }, [])
@@ -90,55 +100,22 @@ export default function AdminDashboard() {
     s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }
   )
 
-  const [todayStr] = useState(() => new Date().toDateString())
-  const todayCount = voters.filter(v => new Date(v.created_at).toDateString() === todayStr).length
-  const verifiedToday = voters.filter(v => v.verified_at && new Date(v.verified_at).toDateString() === todayStr).length
-  const activeOfficers = officers.filter(o => o.status === 'active').length
-
-  const genderData = useMemo(() => {
-    const map = { male: 0, female: 0, other: 0 }
-    voters.forEach(v => { if (map[v.gender] !== undefined) map[v.gender]++ })
-    return [
-      { name: 'Male', value: map.male },
-      { name: 'Female', value: map.female },
-      { name: 'Other', value: map.other },
-    ].filter(d => d.value > 0)
-  }, [voters])
-
-  const countyData = useMemo(() => {
-    const map = {}
-    voters.forEach(v => { map[v.county] = (map[v.county] || 0) + 1 })
-    return Object.entries(map)
-      .map(([county, count]) => ({ county, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 8)
-  }, [voters])
-
   const dailyData = useMemo(() => {
     const days = RANGES.find(r => r.key === range)?.days ?? 14
-    const out = []
-    for (let i = days - 1; i >= 0; i--) {
-      const d = new Date(nowTs)
-      d.setDate(d.getDate() - i)
-      const key = d.toDateString()
-      out.push({
-        day: d.toLocaleDateString('en-KE', { month: 'short', day: 'numeric' }),
-        count: voters.filter(v => new Date(v.created_at).toDateString() === key).length,
-      })
-    }
-    return out
-  }, [voters, range, nowTs])
-
-  const hasVoters = voters.length > 0
+    const all = stats.daily_series || []
+    return all.slice(-days)
+  }, [stats, range])
 
   const kpis = [
-    { key: 'voters',   label: 'Total Voters',     value: voters.length,   tone: 'teal'  },
-    { key: 'today',    label: 'Registered Today', value: todayCount,      tone: 'green' },
-    { key: 'verified', label: 'Verified Today',   value: verifiedToday,   tone: 'blue'  },
-    { key: 'officers', label: 'Total Officers',   value: officers.length, tone: 'slate' },
-    { key: 'active',   label: 'Active Officers',  value: activeOfficers,  tone: 'green' },
-    { key: 'status',   label: 'System Status',    value: 'Online',        tone: 'green', isStatus: true },
+    { key: 'voters',   label: 'Total Voters',     value: (stats.total_voters ?? 0).toLocaleString(), tone: 'teal'  },
+    { key: 'today',    label: 'Registered Today', value: stats.registered_today ?? 0,               tone: 'green' },
+    { key: 'verified', label: 'Verified Today',   value: stats.verified_today ?? 0,                 tone: 'blue'  },
+    { key: 'officers', label: 'Total Officers',   value: stats.total_officers ?? 0,                 tone: 'slate' },
+    { key: 'active',   label: 'Active Officers',  value: stats.active_officers ?? 0,                tone: 'green' },
+    { key: 'status',   label: 'System Status',    value: 'Online',                                  tone: 'green', isStatus: true },
   ]
+
+  const hasVoters = (stats.total_voters ?? 0) > 0
 
   return (
     <div className="admin">
@@ -158,11 +135,14 @@ export default function AdminDashboard() {
           </div>
           <div className="admin-actions">
             <button className="btn-ghost" onClick={() => navigate('/admin/voters')}>All Voters</button>
+            <button className="btn-ghost" onClick={() => navigate('/admin/upload-voters')}>Upload CSV</button>
             <button className="btn-ghost" onClick={() => navigate('/admin/verify')}>Verify Voter</button>
             <button className="btn-ghost" onClick={() => navigate('/admin/voter-registration')}>Register Voter</button>
             <button className="btn-primary" onClick={() => navigate('/admin/register-officer')}>+ Register Officer</button>
           </div>
         </div>
+
+        {error && <div className="form-error" style={{ marginBottom: 16 }}>{error}</div>}
 
         <section className="kpi-grid kpi-grid-6">
           {kpis.map((k, i) => (
@@ -173,19 +153,19 @@ export default function AdminDashboard() {
                 <span className="kpi-dot" aria-hidden="true" />
               </div>
               <span className={'kpi-value' + (k.isStatus ? ' kpi-value-status' : '')}>
-                {k.value}
+                {loading ? '' : k.value}
                 {k.isStatus && <span className="kpi-pulse" aria-hidden="true" />}
               </span>
             </div>
           ))}
         </section>
 
-        {!hasVoters ? (
+        {!hasVoters && !loading ? (
           <div className="chart-empty-card">
             <h3>No data to visualise yet</h3>
             <p className="muted">Charts will appear once voters are registered.</p>
-            <button className="btn-primary" onClick={() => navigate('/admin/voter-registration')}>
-              Register your first voter
+            <button className="btn-primary" onClick={() => navigate('/admin/upload-voters')}>
+              Upload voter CSV
             </button>
           </div>
         ) : (
@@ -198,9 +178,7 @@ export default function AdminDashboard() {
                     {RANGES.map(r => (
                       <button key={r.key} role="tab" aria-selected={range === r.key}
                               className={'chart-tab' + (range === r.key ? ' active' : '')}
-                              onClick={() => setRange(r.key)}>
-                        {r.label}
-                      </button>
+                              onClick={() => setRange(r.key)}>{r.label}</button>
                     ))}
                   </div>
                 </div>
@@ -227,11 +205,11 @@ export default function AdminDashboard() {
                 <h3>Gender Split</h3>
                 <div ref={pieRef} className="chart-body">
                   <PieChart width={pieW} height={CHART_H}>
-                    <Pie data={genderData} dataKey="value" nameKey="name"
+                    <Pie data={stats.gender_split || []} dataKey="value" nameKey="name"
                          cx="50%" cy="50%" innerRadius={48} outerRadius={78}
                          paddingAngle={2} isAnimationActive={false}
                          label={({ value }) => value}>
-                      {genderData.map((_, i) => (
+                      {(stats.gender_split || []).map((_, i) => (
                         <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="#fff" strokeWidth={2} />
                       ))}
                     </Pie>
@@ -246,7 +224,7 @@ export default function AdminDashboard() {
               <div className="chart-card chart-wide">
                 <h3>Voters by County (Top 8)</h3>
                 <div ref={barRef} className="chart-body">
-                  <BarChart width={barW} height={CHART_H} data={countyData}
+                  <BarChart width={barW} height={CHART_H} data={stats.county_top || []}
                             layout="vertical" margin={{ left: 20, right: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#eef2f6" horizontal={false} />
                     <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
@@ -284,17 +262,11 @@ export default function AdminDashboard() {
               <table className="officers-table">
                 <thead>
                   <tr>
-                    <th onClick={() => toggleSort('full_name')} className={sort.key === 'full_name' ? 'sorted' : ''}>
-                      Full Name <SortArrow active={sort.key === 'full_name'} dir={sort.dir} />
-                    </th>
-                    <th onClick={() => toggleSort('email')} className={sort.key === 'email' ? 'sorted' : ''}>
-                      Email <SortArrow active={sort.key === 'email'} dir={sort.dir} />
-                    </th>
+                    <th onClick={() => toggleSort('full_name')} className={sort.key === 'full_name' ? 'sorted' : ''}>Full Name</th>
+                    <th onClick={() => toggleSort('email')} className={sort.key === 'email' ? 'sorted' : ''}>Email</th>
                     <th>Phone</th>
                     <th>Status</th>
-                    <th onClick={() => toggleSort('created_at')} className={sort.key === 'created_at' ? 'sorted' : ''}>
-                      Registered <SortArrow active={sort.key === 'created_at'} dir={sort.dir} />
-                    </th>
+                    <th onClick={() => toggleSort('created_at')} className={sort.key === 'created_at' ? 'sorted' : ''}>Registered</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -315,9 +287,4 @@ export default function AdminDashboard() {
       </main>
     </div>
   )
-}
-
-function SortArrow({ active, dir }) {
-  if (!active) return <span className="sort-arrow muted">updown</span>
-  return <span className="sort-arrow active">{dir === 'asc' ? 'up' : 'down'}</span>
 }
